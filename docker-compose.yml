@@ -1,0 +1,151 @@
+services:
+  # ========== Infrastructure ==========
+  mysql:
+    image: mysql:8.0
+    container_name: aisiem-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-aisiem_root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-aisiem_db}
+      MYSQL_USER: ${MYSQL_USER:-aisiem}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-aisiem_pass}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./common/init-scripts:/docker-entrypoint-initdb.d
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aisiem-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: aisiem-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aisiem-network
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: aisiem-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - aisiem-network
+
+  # ========== Application Services ==========
+  log-ingestion-service:
+    build:
+      context: ./log-ingestion-service
+      dockerfile: Dockerfile
+    container_name: aisiem-ingestion
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-aisiem_db}
+      DB_USERNAME: ${MYSQL_USER:-aisiem}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-aisiem_pass}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ELASTICSEARCH_HOST: elasticsearch
+      ELASTICSEARCH_PORT: 9200
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - aisiem-network
+
+  threat-detection-service:
+    build:
+      context: ./threat-detection-service
+      dockerfile: Dockerfile
+    container_name: aisiem-detection
+    ports:
+      - "8082:8082"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-aisiem_db}
+      DB_USER: ${MYSQL_USER:-aisiem}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-aisiem_pass}
+      ELASTICSEARCH_HOST: elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      LLM_PROVIDER: ${LLM_PROVIDER:-none}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - aisiem-network
+
+  alert-dashboard-service:
+    build:
+      context: ./alert-dashboard-service
+      dockerfile: Dockerfile
+    container_name: aisiem-alert
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-aisiem_db}
+      DB_USERNAME: ${MYSQL_USER:-aisiem}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-aisiem_pass}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      WEBHOOK_URL: ${WEBHOOK_URL:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - aisiem-network
+
+networks:
+  aisiem-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  redis-data:
+  es-data:
