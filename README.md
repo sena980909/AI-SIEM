@@ -2,33 +2,99 @@
 
 AI 기반 실시간 보안 로그 분석 시스템. MSA(Microservices Architecture) 구조로 로그 수집, 위협 탐지, 알림까지 자동화합니다.
 
+---
+
+## 빠른 시작 (Quick Start)
+
+### 1단계: 환경 설정
+
+```bash
+git clone <repo-url> && cd AISIEM
+cp .env.example .env
+# .env 파일에서 OPENAI_API_KEY 등 필요한 값 수정 (없으면 룰 엔진만 동작)
+```
+
+### 2단계: 전체 실행 (Docker 한 방)
+
+```bash
+docker compose up -d --build
+```
+
+> 7개 컨테이너가 자동으로 뜹니다 (MySQL, Redis, Elasticsearch, 3개 앱 서비스, Grafana)
+
+### 3단계: 접속
+
+| URL | 설명 |
+|-----|------|
+| http://localhost:8083 | **SIEM 대시보드** - 실시간 모니터링 UI |
+| http://localhost:3000 | **Grafana** - 운영 모니터링 (admin / aisiem) |
+| http://localhost:8081/swagger-ui.html | Log Ingestion API 문서 |
+| http://localhost:8082/docs | Threat Detection API 문서 |
+| http://localhost:8083/swagger-ui.html | Alert & Dashboard API 문서 |
+
+### 4단계: 테스트 로그 주입
+
+```bash
+# 시뮬레이터로 공격 트래픽 생성
+python tools/log_simulator.py --scenario all --count 100
+
+# 또는 단건 수동 전송
+curl -X POST http://localhost:8081/api/logs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source": "web-server",
+    "logLevel": "ERROR",
+    "message": "SQL error: SELECT * FROM users WHERE id=1 OR 1=1;--",
+    "sourceIp": "10.0.0.99",
+    "endpoint": "/api/users",
+    "method": "GET",
+    "statusCode": 500
+  }'
+```
+
+### 5단계: 결과 확인
+
+- http://localhost:8083 새로고침 → 차트/테이블에 탐지 결과 표시
+- WebSocket 실시간 알림 피드 자동 수신
+- http://localhost:3000 → Grafana에서 시계열 그래프 확인
+
+```bash
+# API로도 확인 가능
+curl http://localhost:8083/api/dashboard/summary    # 대시보드 통계
+curl http://localhost:8082/api/detection/events      # 탐지된 이벤트
+curl http://localhost:8083/api/alerts                # 발송된 알림
+```
+
+---
+
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Docker Compose                         │
-│                                                             │
-│  ┌──────────────┐    ┌─────────────┐    ┌────────────────┐  │
-│  │ Log Ingest   │───>│   Redis     │───>│   Threat       │  │
-│  │ Service      │    │   Streams   │    │   Detection    │  │
-│  │ Spring Boot  │    │   (Queue)   │    │   FastAPI      │  │
-│  │   :8081      │    │   :6379     │    │   :8082        │  │
-│  └──────┬───────┘    └─────────────┘    └───────┬────────┘  │
-│         │                                       │           │
-│         ▼                                       ▼           │
-│  ┌──────────────┐                      ┌────────────────┐   │
-│  │ Elastic      │                      │   MySQL 8.0    │   │
-│  │ Search 8.12  │                      │   :3306        │   │
-│  │   :9200      │                      └───────┬────────┘   │
-│  └──────────────┘                              │            │
-│                                                ▼            │
-│                                       ┌────────────────┐    │
-│                                       │  Alert &       │    │
-│                                       │  Dashboard     │    │
-│                                       │  Spring Boot   │    │
-│                                       │   :8083        │    │
-│                                       └────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                          Docker Compose                              │
+│                                                                      │
+│  ┌──────────────┐    ┌─────────────┐    ┌────────────────┐           │
+│  │ Log Ingest   │───>│   Redis     │───>│   Threat       │           │
+│  │ Service      │    │   Streams   │    │   Detection    │           │
+│  │ Spring Boot  │    │   (Queue)   │    │   FastAPI      │           │
+│  │   :8081      │    │   :6379     │    │   :8082        │           │
+│  └──────┬───────┘    └─────────────┘    └───────┬────────┘           │
+│         │                                       │                    │
+│         ▼                                       ▼                    │
+│  ┌──────────────┐                      ┌────────────────┐            │
+│  │ Elastic      │                      │   MySQL 8.0    │            │
+│  │ Search 8.12  │◄─────┐              │   :3306        │            │
+│  │   :9200      │      │              └───────┬────────┘            │
+│  └──────────────┘      │                      │                     │
+│                        │                      ▼                     │
+│                 ┌──────┴───────┐      ┌────────────────┐            │
+│                 │  Grafana     │      │  Alert &       │            │
+│                 │  :3000       │◄─────│  Dashboard     │            │
+│                 └──────────────┘      │  + SIEM UI     │            │
+│                                       │  Spring Boot   │            │
+│                                       │   :8083        │            │
+│                                       └────────────────┘            │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Tech Stack
@@ -42,6 +108,8 @@ AI 기반 실시간 보안 로그 분석 시스템. MSA(Microservices Architectu
 | Log Storage | Elasticsearch 8.12 |
 | RDB | MySQL 8.0 |
 | LLM | OpenAI GPT-4o mini / Claude API / Ollama / None (환경변수로 전환) |
+| Monitoring | Grafana 10.4 |
+| Dashboard UI | HTML + Tailwind CSS + Chart.js + WebSocket |
 | Container | Docker Compose |
 | Build | Gradle 8.12, pip |
 
@@ -93,73 +161,25 @@ Redis Stream에서 로그를 소비하여 룰 엔진 + LLM으로 보안 위협�
 
 **알림 채널:** Webhook (Slack/Discord), Email (SMTP), WebSocket
 
-## Quick Start
+## 개별 서비스 실행 (Docker 없이)
 
-### 1. 환경 설정
-
-```bash
-cp .env.example .env
-# .env 파일에서 필요한 값 수정
-```
-
-### 2. 인프라 실행
+인프라(MySQL, Redis, ES)만 Docker로 띄우고 앱 서비스를 로컬에서 직접 실행할 수도 있습니다.
 
 ```bash
+# 인프라만 실행
 docker compose up -d mysql redis elasticsearch
-```
 
-### 3. 서비스 실행
-
-```bash
 # Log Ingestion Service
-cd log-ingestion-service
-./gradlew bootJar --no-daemon
-java -jar build/libs/log-ingestion-service-0.0.1-SNAPSHOT.jar
+cd log-ingestion-service && ./gradlew bootRun
 
 # Threat Detection Service
 cd threat-detection-service
-python -m venv venv
-source venv/Scripts/activate  # Windows
+python -m venv venv && source venv/Scripts/activate
 pip install -r requirements.txt
-DB_PORT=3307 LLM_PROVIDER=none uvicorn app.main:app --port 8082
+DB_PORT=3307 uvicorn app.main:app --port 8082
 
 # Alert & Dashboard Service
-cd alert-dashboard-service
-./gradlew bootJar --no-daemon
-java -jar build/libs/alert-dashboard-service-0.0.1-SNAPSHOT.jar
-```
-
-### 4. 테스트 로그 전송
-
-```bash
-# 단건 전송
-curl -X POST http://localhost:8081/api/logs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source": "web-server",
-    "logLevel": "ERROR",
-    "message": "SQL error: SELECT * FROM users WHERE id=1 OR 1=1;--",
-    "sourceIp": "10.0.0.99",
-    "endpoint": "/api/users",
-    "method": "GET",
-    "statusCode": 500
-  }'
-
-# 시뮬레이터로 대량 테스트
-python tools/log_simulator.py --scenario all --count 100
-```
-
-### 5. 결과 확인
-
-```bash
-# 대시보드 통계
-curl http://localhost:8083/api/dashboard/summary
-
-# 탐지된 이벤트
-curl http://localhost:8082/api/detection/events
-
-# 발송된 알림
-curl http://localhost:8083/api/alerts
+cd alert-dashboard-service && ./gradlew bootRun
 ```
 
 ## Log Simulator
@@ -252,7 +272,12 @@ AISIEM/
 │   ├── controller/                 # AlertController, DashboardController
 │   ├── service/                    # AlertService, NotificationService
 │   ├── domain/                     # Alert, SecurityEvent (JPA)
-│   └── global/config/              # WebSocket, Swagger
+│   ├── global/config/              # WebSocket, Swagger
+│   └── resources/static/index.html # SIEM 대시보드 UI
+│
+├── grafana/provisioning/           # Grafana 자동 설정 :3000
+│   ├── datasources/datasources.yml # MySQL + ES 데이터소스
+│   └── dashboards/json/            # 대시보드 JSON (6개 패널)
 │
 ├── tools/
 │   └── log_simulator.py            # 공격 시뮬레이션 도구

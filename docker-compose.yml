@@ -100,8 +100,11 @@ services:
       DB_PASSWORD: ${MYSQL_PASSWORD:-aisiem_pass}
       ELASTICSEARCH_HOST: elasticsearch
       ELASTICSEARCH_PORT: 9200
-      LLM_PROVIDER: ${LLM_PROVIDER:-none}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-haiku-4-5-20251001}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3}
     depends_on:
@@ -141,6 +144,26 @@ services:
     networks:
       - aisiem-network
 
+  # ========== Monitoring ==========
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: aisiem-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=aisiem
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      mysql:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - aisiem-network
+
 networks:
   aisiem-network:
     driver: bridge
@@ -149,3 +172,4 @@ volumes:
   mysql-data:
   redis-data:
   es-data:
+  grafana-data:
