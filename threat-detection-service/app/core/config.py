@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     # Claude API
     CLAUDE_API_KEY: str = ""
-    CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
+    CLAUDE_MODEL: str = "claude-haiku-4-5-20251001"
 
     # Ollama (local LLM for air-gapped environments)
     OLLAMA_HOST: str = "http://localhost:11434"

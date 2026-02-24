@@ -180,7 +180,7 @@ python tools/log_simulator.py --scenario mixed --count 200      # 혼합 트래�
 | 환경 | 설정값 | 설명 |
 |------|--------|------|
 | 가성비 추천 | `LLM_PROVIDER=openai` | GPT-4o mini (~$0.0004/분석) |
-| 고성능 | `LLM_PROVIDER=claude` | Claude API 사용 |
+| 정밀 분석 | `LLM_PROVIDER=claude` | Claude Haiku 3.5 (~$0.003/분석) |
 | 폐쇄망/산업망 | `LLM_PROVIDER=ollama` | 로컬 LLM (Qwen, Llama3 등) |
 | 룰셋만 사용 | `LLM_PROVIDER=none` | LLM 없이 룰 엔진만 동작 |
 
@@ -194,6 +194,19 @@ LLM_PROVIDER=claude CLAUDE_API_KEY=sk-ant-... uvicorn app.main:app --port 8082
 # 로컬 LLM (llama-server / Ollama)
 LLM_PROVIDER=ollama OLLAMA_HOST=http://localhost:11434 uvicorn app.main:app --port 8082
 ```
+
+## E2E Test Results
+
+3개 LLM 모델로 동일한 이상 트래픽을 분석한 결과, **모두 10/10 탐지 성공**했습니다.
+
+| 항목 | Qwen 7B (로컬) | GPT-4o mini | Claude Haiku 3.5 |
+|------|---------------|-------------|-----------------|
+| 탐지율 | 10/10 | 10/10 | 10/10 |
+| CRITICAL 판정 | 0건 | 0건 | 4건 |
+| 비용/분석 | 무료 | ~$0.0004 | ~$0.003 |
+| 적합 환경 | 폐쇄망/산업망 | 가성비 클라우드 | 정밀 분석 |
+
+> 상세 테스트 리포트: [aitest.md](./aitest.md)
 
 ## Swagger UI
 
@@ -241,6 +254,8 @@ AISIEM/
 │   ├── domain/                     # Alert, SecurityEvent (JPA)
 │   └── global/config/              # WebSocket, Swagger
 │
-└── tools/
-    └── log_simulator.py            # 공격 시뮬레이션 도구
+├── tools/
+│   └── log_simulator.py            # 공격 시뮬레이션 도구
+├── test_attack_simulator.py        # E2E 공격 테스트 스크립트
+└── aitest.md                       # AI 탐지 테스트 리포트
 ```
