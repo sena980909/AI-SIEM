@@ -51,6 +51,27 @@ def _parse_llm_response(response_text: str) -> list[dict]:
     return results
 
 
+async def _analyze_with_openai(logs_text: str) -> list[dict]:
+    """Call OpenAI API (GPT-4o mini etc.)."""
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
+            json={
+                "model": settings.OPENAI_MODEL,
+                "messages": [
+                    {"role": "user", "content": ANALYSIS_PROMPT.format(logs=logs_text)}
+                ],
+                "max_tokens": 1024,
+                "temperature": 0.1,
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        return _parse_llm_response(content)
+
+
 async def _analyze_with_claude(logs_text: str) -> list[dict]:
     """Call Claude API."""
     client = anthropic.Anthropic(api_key=settings.CLAUDE_API_KEY)
@@ -65,19 +86,24 @@ async def _analyze_with_claude(logs_text: str) -> list[dict]:
 
 
 async def _analyze_with_ollama(logs_text: str) -> list[dict]:
-    """Call local Ollama API (for air-gapped / industrial environments)."""
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    """Call local LLM via OpenAI-compatible API (llama-server / Ollama)."""
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        # Try OpenAI-compatible endpoint first (llama-server, vLLM, etc.)
         response = await client.post(
-            f"{settings.OLLAMA_HOST}/api/generate",
+            f"{settings.OLLAMA_HOST}/v1/chat/completions",
             json={
                 "model": settings.OLLAMA_MODEL,
-                "prompt": ANALYSIS_PROMPT.format(logs=logs_text),
-                "stream": False,
+                "messages": [
+                    {"role": "user", "content": ANALYSIS_PROMPT.format(logs=logs_text)}
+                ],
+                "max_tokens": 1024,
+                "temperature": 0.1,
             },
         )
         response.raise_for_status()
         data = response.json()
-        return _parse_llm_response(data["response"])
+        content = data["choices"][0]["message"]["content"]
+        return _parse_llm_response(content)
 
 
 async def analyze_with_llm(logs: list[LogMessage]) -> list[dict]:
@@ -88,6 +114,9 @@ async def analyze_with_llm(logs: list[LogMessage]) -> list[dict]:
         logger.debug("LLM provider set to 'none', skipping AI analysis")
         return []
 
+    if provider == "openai" and not settings.OPENAI_API_KEY:
+        logger.warning("OpenAI selected but API key not set, skipping")
+        return []
     if provider == "claude" and not settings.CLAUDE_API_KEY:
         logger.warning("Claude selected but API key not set, skipping")
         return []
@@ -95,7 +124,9 @@ async def analyze_with_llm(logs: list[LogMessage]) -> list[dict]:
     try:
         logs_text = _format_logs(logs)
 
-        if provider == "claude":
+        if provider == "openai":
+            results = await _analyze_with_openai(logs_text)
+        elif provider == "claude":
             results = await _analyze_with_claude(logs_text)
         elif provider == "ollama":
             results = await _analyze_with_ollama(logs_text)

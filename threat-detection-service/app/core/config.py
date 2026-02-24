@@ -33,8 +33,12 @@ class Settings(BaseSettings):
     def ELASTICSEARCH_URL(self) -> str:
         return f"http://{self.ELASTICSEARCH_HOST}:{self.ELASTICSEARCH_PORT}"
 
-    # LLM Provider: "claude", "ollama", "none"
+    # LLM Provider: "openai", "claude", "ollama", "none"
     LLM_PROVIDER: str = "none"
+
+    # OpenAI API (GPT-4o mini etc.)
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
 
     # Claude API
     CLAUDE_API_KEY: str = ""

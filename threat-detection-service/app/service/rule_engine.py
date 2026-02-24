@@ -22,6 +22,7 @@ SQL_INJECTION_PATTERNS = [
     r"(xp_cmdshell)",
     r"(EXEC\s*\()",
     r"(WAITFOR\s+DELAY)",
+    r"('\s*--)",
 ]
 
 # Admin endpoints pattern

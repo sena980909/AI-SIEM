@@ -41,7 +41,7 @@ AI 기반 실시간 보안 로그 분석 시스템. MSA(Microservices Architectu
 | Message Queue | Redis 7 Streams |
 | Log Storage | Elasticsearch 8.12 |
 | RDB | MySQL 8.0 |
-| LLM | Claude API / Ollama / None (환경변수로 전환) |
+| LLM | OpenAI GPT-4o mini / Claude API / Ollama / None (환경변수로 전환) |
 | Container | Docker Compose |
 | Build | Gradle 8.12, pip |
 
@@ -179,15 +179,19 @@ python tools/log_simulator.py --scenario mixed --count 200      # 혼합 트래�
 
 | 환경 | 설정값 | 설명 |
 |------|--------|------|
-| 개발/클라우드 | `LLM_PROVIDER=claude` | Claude API 사용 |
-| 폐쇄망/산업망 | `LLM_PROVIDER=ollama` | 로컬 Ollama (Llama3 등) |
+| 가성비 추천 | `LLM_PROVIDER=openai` | GPT-4o mini (~$0.0004/분석) |
+| 고성능 | `LLM_PROVIDER=claude` | Claude API 사용 |
+| 폐쇄망/산업망 | `LLM_PROVIDER=ollama` | 로컬 LLM (Qwen, Llama3 등) |
 | 룰셋만 사용 | `LLM_PROVIDER=none` | LLM 없이 룰 엔진만 동작 |
 
 ```bash
-# Claude API
-LLM_PROVIDER=claude CLAUDE_API_KEY=sk-... uvicorn app.main:app --port 8082
+# OpenAI GPT-4o mini (가성비 추천)
+LLM_PROVIDER=openai OPENAI_API_KEY=sk-proj-... uvicorn app.main:app --port 8082
 
-# Ollama (로컬)
+# Claude API
+LLM_PROVIDER=claude CLAUDE_API_KEY=sk-ant-... uvicorn app.main:app --port 8082
+
+# 로컬 LLM (llama-server / Ollama)
 LLM_PROVIDER=ollama OLLAMA_HOST=http://localhost:11434 uvicorn app.main:app --port 8082
 ```
 
@@ -226,7 +230,7 @@ AISIEM/
 │   ├── api/                        # Detection API router
 │   ├── service/
 │   │   ├── rule_engine.py          # Brute Force, SQLi, PrivEsc 룰
-│   │   ├── ai_analyzer.py          # Claude/Ollama LLM 분석
+│   │   ├── ai_analyzer.py          # OpenAI/Claude/Ollama LLM 분석
 │   │   └── stream_consumer.py      # Redis Stream 소비자
 │   ├── model/                      # SQLAlchemy models
 │   └── schema/                     # Pydantic schemas
